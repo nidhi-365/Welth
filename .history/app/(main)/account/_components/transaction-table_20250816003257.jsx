@@ -50,7 +50,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { categoryColors } from "@/data/categories";
-import { bulkDeleteTransactions } from "@/actions/account";
+import { bulkDeleteTransactions } from "@/actions/accounts";
 import useFetch from "@/hooks/use-fetch";
 import { BarLoader } from "react-spinners";
 import { useRouter } from "next/navigation";
@@ -76,11 +76,9 @@ export function TransactionTable({ transactions }) {
   const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
 
-  // Memoized filtered and sorted transactions
   const filteredAndSortedTransactions = useMemo(() => {
     let result = [...transactions];
 
-    // Apply search filter
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       result = result.filter((transaction) =>
@@ -88,12 +86,10 @@ export function TransactionTable({ transactions }) {
       );
     }
 
-    // Apply type filter
     if (typeFilter) {
       result = result.filter((transaction) => transaction.type === typeFilter);
     }
 
-    // Apply recurring filter
     if (recurringFilter) {
       result = result.filter((transaction) => {
         if (recurringFilter === "recurring") return transaction.isRecurring;
@@ -101,7 +97,6 @@ export function TransactionTable({ transactions }) {
       });
     }
 
-    // Apply sorting
     result.sort((a, b) => {
       let comparison = 0;
 
@@ -125,7 +120,6 @@ export function TransactionTable({ transactions }) {
     return result;
   }, [transactions, searchTerm, typeFilter, recurringFilter, sortConfig]);
 
-  // Pagination calculations
   const totalPages = Math.ceil(
     filteredAndSortedTransactions.length / ITEMS_PER_PAGE
   );
@@ -153,11 +147,11 @@ export function TransactionTable({ transactions }) {
     );
   };
 
-  const handleSelectAll = () => {
+  const handleSelectAll = (isChecked) => {
     setSelectedIds((current) =>
-      current.length === paginatedTransactions.length
-        ? []
-        : paginatedTransactions.map((t) => t.id)
+      isChecked
+        ? paginatedTransactions.map((t) => t.id)
+        : []
     );
   };
 
@@ -165,8 +159,10 @@ export function TransactionTable({ transactions }) {
     loading: deleteLoading,
     fn: deleteFn,
     data: deleted,
+    error: deleteError,
   } = useFetch(bulkDeleteTransactions);
 
+  // --- MODIFIED handleBulkDelete function for more direct state update ---
   const handleBulkDelete = async () => {
     if (
       !window.confirm(
@@ -175,14 +171,25 @@ export function TransactionTable({ transactions }) {
     )
       return;
 
-    deleteFn(selectedIds);
+    // Await the result of the server action
+    const result = await deleteFn(selectedIds);
+
+    // Check the result directly after the action completes
+    if (result && result.success) {
+      toast.success("Transactions deleted successfully");
+      setSelectedIds([]); // Clear the selection right here
+      router.refresh(); // Refresh data to remove deleted items from the table
+    } else {
+      toast.error(result.error || "Failed to delete transactions.");
+    }
   };
 
+  // Keep a simple useEffect for errors from useFetch itself
   useEffect(() => {
-    if (deleted && !deleteLoading) {
-      toast.error("Transactions deleted successfully");
+    if (deleteError) {
+      toast.error(deleteError.message || "An unexpected error occurred during deletion.");
     }
-  }, [deleted, deleteLoading]);
+  }, [deleteError]);
 
   const handleClearFilters = () => {
     setSearchTerm("");
@@ -193,7 +200,7 @@ export function TransactionTable({ transactions }) {
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
-    setSelectedIds([]); // Clear selections on page change
+    setSelectedIds([]);
   };
 
   return (
@@ -201,7 +208,6 @@ export function TransactionTable({ transactions }) {
       {deleteLoading && (
         <BarLoader className="mt-4" width={"100%"} color="#9333ea" />
       )}
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -255,6 +261,7 @@ export function TransactionTable({ transactions }) {
                 variant="destructive"
                 size="sm"
                 onClick={handleBulkDelete}
+                disabled={deleteLoading}
               >
                 <Trash className="h-4 w-4 mr-2" />
                 Delete Selected ({selectedIds.length})
@@ -275,7 +282,6 @@ export function TransactionTable({ transactions }) {
         </div>
       </div>
 
-      {/* Transactions Table */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -478,3 +484,5 @@ export function TransactionTable({ transactions }) {
     </div>
   );
 }
+
+export default TransactionTable;
